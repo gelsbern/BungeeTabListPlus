@@ -26,12 +26,16 @@ import codecrafter47.bungeetablistplus.context.Context;
 import codecrafter47.bungeetablistplus.managers.ConnectedPlayerManager;
 import codecrafter47.bungeetablistplus.player.ConnectedPlayer;
 import codecrafter47.bungeetablistplus.tablisthandler.PlayerTablistHandler;
-import codecrafter47.bungeetablistplus.tablistproviders.*;
+import codecrafter47.bungeetablistplus.tablistproviders.ConfigTablistProvider;
+import codecrafter47.bungeetablistplus.tablistproviders.DefaultTablistProvider;
+import codecrafter47.bungeetablistplus.tablistproviders.DynamicSizeConfigTablistProvider;
+import codecrafter47.bungeetablistplus.tablistproviders.FixedColumnsConfigTablistProvider;
+import codecrafter47.bungeetablistplus.tablistproviders.FixedSizeConfigTablistProvider;
+import codecrafter47.bungeetablistplus.tablistproviders.TablistProvider;
 import gnu.trove.set.hash.THashSet;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.connection.Server;
 
-import javax.annotation.Nonnull;
 import java.util.Collections;
 import java.util.Objects;
 import java.util.Queue;
@@ -66,7 +70,7 @@ public class ResendThread implements Runnable, Executor {
     }
 
     @Override
-    public void execute(@Nonnull Runnable runnable) {
+    public void execute(Runnable runnable) {
         lock.lock();
         try {
             tasks.add(runnable);
@@ -93,12 +97,11 @@ public class ResendThread implements Runnable, Executor {
                         lock.unlock();
                     }
                 }
-                Runnable task;
-                while (null != (task = tasks.poll())) {
-                    task.run();
+                while (!tasks.isEmpty()) {
+                    tasks.poll().run();
                 }
-                ProxiedPlayer player = queue.poll();
-                if (null != player) {
+                if (!queue.isEmpty()) {
+                    ProxiedPlayer player = queue.poll();
                     set.remove(player);
                     if (player.getServer() != null) {
                         ConnectedPlayerManager connectedPlayerManager = BungeeTabListPlus.getInstance().getConnectedPlayerManager();
@@ -120,10 +123,6 @@ public class ResendThread implements Runnable, Executor {
 
     private void update(ProxiedPlayer player, ConnectedPlayer connectedPlayer) {
         PlayerTablistHandler tablistHandler = connectedPlayer.getPlayerTablistHandler();
-
-        if (tablistHandler == null) {
-            return;
-        }
 
         try {
             if (connectedPlayer.getCustomTablist() != null) {

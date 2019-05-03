@@ -22,12 +22,10 @@ package codecrafter47.bungeetablistplus.tablisthandler.logic;
 import codecrafter47.bungeetablistplus.api.bungee.Icon;
 import codecrafter47.bungeetablistplus.protocol.PacketListenerResult;
 import codecrafter47.bungeetablistplus.tablisthandler.PlayerTablistHandler;
-import codecrafter47.bungeetablistplus.util.FastChat;
 import codecrafter47.bungeetablistplus.util.Object2IntHashMultimap;
 import com.google.common.base.Charsets;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
-import de.codecrafter47.bungeetablistplus.bungee.compat.PacketUtil;
 import it.unimi.dsi.fastutil.ints.IntIterator;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -50,29 +48,21 @@ import static net.md_5.bungee.protocol.packet.PlayerListItem.Action.*;
 
 public abstract class AbstractTabListLogic extends TabListHandler {
 
-    protected static final String[] fakePlayerUsernames = new String[81];
-    protected static final String[] teamNames = new String[81];
-    protected static final String[] teamNamesChat = new String[81];
-    protected static final UUID[] fakePlayerUUIDs = new UUID[81];
+    protected static final String[] fakePlayerUsernames = new String[80];
+    protected static final UUID[] fakePlayerUUIDs = new UUID[80];
     protected static final Set<String> fakePlayerUsernameSet;
-    protected static final Set<String> teamNameSet;
     protected static final Set<UUID> fakePlayerUUIDSet;
     protected static final String[][] EMPTY_PROPRTIES = new String[0][];
-    public static final String EMPTY_CHAT = "{\"text\": \"\"}";
 
     private static boolean teamCollisionRuleSupported;
-    private static boolean teamColorIsByte;
 
     static {
-        for (int i = 0; i < 81; i++) {
-            fakePlayerUsernames[i] = String.format("~BTLP Slot %02d", i);
+        for (int i = 0; i < 80; i++) {
+            fakePlayerUsernames[i] = String.format(" BTLP Slot %02d", i);
             fakePlayerUUIDs[i] = UUID.nameUUIDFromBytes(("OfflinePlayer:" + fakePlayerUsernames[i]).getBytes(Charsets.UTF_8));
-            teamNames[i] = String.format(" BTLP Slot %02d", i);
-            teamNamesChat[i] = FastChat.legacyTextToJson(teamNames[i]);
         }
         fakePlayerUsernameSet = ImmutableSet.copyOf(fakePlayerUsernames);
         fakePlayerUUIDSet = ImmutableSet.copyOf(fakePlayerUUIDs);
-        teamNameSet = ImmutableSet.copyOf(teamNames);
 
         try {
             Team.class.getDeclaredMethod("setCollisionRule", String.class);
@@ -80,17 +70,9 @@ public abstract class AbstractTabListLogic extends TabListHandler {
         } catch (NoSuchMethodException e) {
             teamCollisionRuleSupported = false;
         }
-
-        try {
-            Team.class.getDeclaredMethod("setColor", byte.class);
-            teamColorIsByte = true;
-        } catch (NoSuchMethodException e) {
-            teamColorIsByte = false;
-        }
     }
 
-    protected final Map<UUID, TabListItem> serverTabList = new Object2ObjectOpenHashMap<>();
-    protected final Set<String> serverTabListPlayers = new ObjectOpenHashSet<>();
+    protected final Map<UUID, TabListItem> serverTabList = new ConcurrentHashMap<>(); // todo doesn't need to be thread safe anymore
     protected String serverHeader = null;
     protected String serverFooter = null;
 
@@ -132,39 +114,24 @@ public abstract class AbstractTabListLogic extends TabListHandler {
 
     abstract protected void sendPacket(DefinedPacket packet);
 
-    abstract protected boolean is113OrLater();
-
     @Override
     public void onConnected() {
         // add our teams to the client
-        for (int i = 0; i < 81; i++) {
+        for (int i = 0; i < 80; i++) {
             Team team = new Team();
             team.setMode((byte) 0);
-            team.setName(teamNames[i]);
-            if (is113OrLater()) {
-                team.setDisplayName(teamNamesChat[i]);
-                team.setPrefix(EMPTY_CHAT);
-                team.setSuffix(EMPTY_CHAT);
-            } else {
-                team.setDisplayName(teamNames[i]);
-                team.setPrefix("");
-                team.setSuffix("");
-            }
+            team.setName(fakePlayerUsernames[i]);
+            team.setDisplayName(fakePlayerUsernames[i]);
+            team.setPrefix("");
+            team.setSuffix("");
             team.setFriendlyFire((byte) 1);
             team.setNameTagVisibility("always");
             if (teamCollisionRuleSupported) {
                 team.setCollisionRule("always");
             }
-            if (teamColorIsByte) {
-                PacketUtil.setTeamColorByte(team, (byte) 0);
-            } else {
-                team.setColor(is113OrLater() ? 21 : 0); // Reset
-            }
-            team.setPlayers(new String[]{fakePlayerUsernames[i]});
+            team.setColor((byte) 0);
+            team.setPlayers(new String[0]);
             sendPacket(team);
-            if (i != 80) {
-                nameToSlotMap.put(fakePlayerUsernames[i], i);
-            }
         }
     }
 
@@ -189,11 +156,7 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                     if (fakePlayerUsernameSet.contains(item.getUsername())) {
                         throw new AssertionError("Username collision: " + item);
                     }
-                    TabListItem old = serverTabList.put(item.getUuid(), new TabListItem(item));
-                    if (old != null) {
-                        serverTabListPlayers.remove(old.getUsername());
-                    }
-                    serverTabListPlayers.add(item.getUsername());
+                    serverTabList.put(item.getUuid(), new TabListItem(item));
                 }
                 break;
             case UPDATE_GAMEMODE:
@@ -222,10 +185,7 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                 break;
             case REMOVE_PLAYER:
                 for (PlayerListItem.Item item : packet.getItems()) {
-                    TabListItem removed = serverTabList.remove(item.getUuid());
-                    if(removed != null) {
-                        serverTabListPlayers.remove(removed.getUsername());
-                    }
+                    serverTabList.remove(item.getUuid());
                 }
                 break;
         }
@@ -241,17 +201,6 @@ public abstract class AbstractTabListLogic extends TabListHandler {
 
         // if passthrough is enabled send the packet to the client
         if (passtrough || size == 80) {
-
-            if (!passtrough) {
-                if (packet.getAction() == ADD_PLAYER) {
-                    for (PlayerListItem.Item item : packet.getItems()) {
-                        if (!playerToTeamMap.containsKey(item.getUsername())) {
-                            sendPacket(addPlayer(80, item.getUsername()));
-                        }
-                    }
-                }
-            }
-
             sendPacket(packet);
 
             if (size != requestedSize && serverTabList.size() <= requestedSize) {
@@ -398,7 +347,9 @@ public abstract class AbstractTabListLogic extends TabListHandler {
     }
 
     private void useFakePlayerForSlot(int slot) {
-        if (clientUuid[slot] != fakePlayerUUIDs[slot]) {
+        boolean change = clientUuid[slot] != fakePlayerUUIDs[slot];
+
+        if (change) {
             removePlayerFromTeam(slot, clientUuid[slot], clientUsername[slot]);
             uuidToSlotMap.remove(clientUuid[slot]);
         }
@@ -421,6 +372,10 @@ public abstract class AbstractTabListLogic extends TabListHandler {
         clientUsername[slot] = fakePlayerUsernames[slot];
         clientUuid[slot] = fakePlayerUUIDs[slot];
         uuidToSlotMap.put(clientUuid[slot], slot);
+
+        if (change) {
+            addPlayerToTeam(slot, clientUuid[slot], clientUsername[slot]);
+        }
     }
 
     private void useRealPlayerForSlot(int slot, UUID uuid) {
@@ -472,15 +427,13 @@ public abstract class AbstractTabListLogic extends TabListHandler {
         // dirty hack for citizens compatibility
         if (uuid.version() == 2)
             return;
-        if (uuid != fakePlayerUUIDs[slot]) {
-            sendPacket(addPlayer(slot, player));
-            nameToSlotMap.put(player, slot);
-        }
+        sendPacket(addPlayer(slot, player));
+        nameToSlotMap.put(player, slot);
         if (playerToTeamMap.containsKey(player)) {
             TeamData serverTeam = serverTeams.get(playerToTeamMap.get(player));
             Team team = new Team();
             team.setMode((byte) 2);
-            team.setName(teamNames[slot]);
+            team.setName(fakePlayerUsernames[slot]);
             team.setDisplayName(serverTeam.getDisplayName());
             team.setPrefix(serverTeam.getPrefix());
             team.setSuffix(serverTeam.getSuffix());
@@ -489,11 +442,7 @@ public abstract class AbstractTabListLogic extends TabListHandler {
             if (teamCollisionRuleSupported) {
                 team.setCollisionRule(serverTeam.getCollisionRule());
             }
-            if (teamColorIsByte) {
-                PacketUtil.setTeamColorByte(team, serverTeam.getColor());
-            } else {
-                team.setColor(serverTeam.getColor());
-            }
+            team.setColor(serverTeam.getColor());
             sendPacket(team);
         }
     }
@@ -503,10 +452,8 @@ public abstract class AbstractTabListLogic extends TabListHandler {
         if (uuid.version() == 2)
             return;
         if (nameToSlotMap.getInt(player) == slot) {
-            if (uuid != fakePlayerUUIDs[slot]) {
-                nameToSlotMap.remove(player);
-                sendPacket(removePlayer(slot, player));
-            }
+            nameToSlotMap.remove(player);
+            sendPacket(removePlayer(slot, player));
             if (playerToTeamMap.containsKey(player)) {
                 Team team = new Team();
                 team.setName(playerToTeamMap.get(player));
@@ -515,26 +462,16 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                 sendPacket(team);
                 team = new Team();
                 team.setMode((byte) 2);
-                team.setName(teamNames[slot]);
-                if (is113OrLater()) {
-                    team.setDisplayName(teamNamesChat[slot]);
-                    team.setPrefix(EMPTY_CHAT);
-                    team.setSuffix(EMPTY_CHAT);
-                } else {
-                    team.setDisplayName(teamNames[slot]);
-                    team.setPrefix("");
-                    team.setSuffix("");
-                }
+                team.setName(fakePlayerUsernames[slot]);
+                team.setDisplayName(fakePlayerUsernames[slot]);
+                team.setPrefix("");
+                team.setSuffix("");
                 team.setFriendlyFire((byte) 1);
                 team.setNameTagVisibility("always");
                 if (teamCollisionRuleSupported) {
                     team.setCollisionRule("always");
                 }
-                if (teamColorIsByte) {
-                    PacketUtil.setTeamColorByte(team, (byte) 0);
-                } else {
-                    team.setColor(is113OrLater() ? 21 : 0); // Reset
-                }
+                team.setColor((byte) 0);
                 sendPacket(team);
             }
         }
@@ -542,7 +479,7 @@ public abstract class AbstractTabListLogic extends TabListHandler {
 
     @Override
     public PacketListenerResult onTeamPacket(Team packet) {
-        if (teamNameSet.contains(packet.getName())) {
+        if (fakePlayerUsernameSet.contains(packet.getName())) {
             throw new AssertionError("Team name collision: " + packet);
         }
 
@@ -558,31 +495,17 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                     if (!passtrough && size != 80 && -1 != (slot = nameToSlotMap.getInt(player))) {
                         Team packet1 = new Team();
                         packet1.setMode((byte) 2);
-                        packet1.setName(teamNames[slot]);
-                        if (is113OrLater()) {
-                            packet1.setDisplayName(teamNamesChat[slot]);
-                            packet1.setPrefix(EMPTY_CHAT);
-                            packet1.setSuffix(EMPTY_CHAT);
-                        } else {
-                            packet1.setDisplayName(packet1.getName());
-                            packet1.setPrefix("");
-                            packet1.setSuffix("");
-                        }
+                        packet1.setName(fakePlayerUsernames[slot]);
+                        packet1.setDisplayName(packet1.getName());
+                        packet1.setPrefix("");
+                        packet1.setSuffix("");
                         packet1.setFriendlyFire((byte) 1);
                         packet1.setNameTagVisibility("always");
                         if (teamCollisionRuleSupported) {
                             packet1.setCollisionRule("always");
                         }
-                        if (teamColorIsByte) {
-                            PacketUtil.setTeamColorByte(packet1, (byte) 0);
-                        } else {
-                            packet1.setColor(is113OrLater() ? 21 : 0); // Reset
-                        }
+                        packet1.setColor((byte) 0);
                         sendPacket(packet1);
-                    } else if (!passtrough && size == 80) {
-                        if (serverTabListPlayers.contains(player)) {
-                            sendPacket(addPlayer(80, player));
-                        }
                     }
                 }
             }
@@ -608,19 +531,13 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                     if (teamCollisionRuleSupported) {
                         t.setCollisionRule(packet.getCollisionRule());
                     }
-                    if (teamColorIsByte) {
-                        t.setColor(PacketUtil.getTeamColorByte(packet));
-                    } else {
-                        t.setColor((byte) packet.getColor());
-                    }
+                    t.setColor(packet.getColor());
                 }
                 if (packet.getPlayers() != null) {
                     for (String s : packet.getPlayers()) {
                         if (packet.getMode() == 0 || packet.getMode() == 3) {
                             if (playerToTeamMap.containsKey(s)) {
                                 serverTeams.get(playerToTeamMap.get(s)).removePlayer(s);
-                            } else if (!passtrough && size == 80 && serverTabListPlayers.contains(s)) {
-                                sendPacket(removePlayer(80, s));
                             }
                             t.addPlayer(s);
                             playerToTeamMap.put(s, packet.getName());
@@ -631,8 +548,6 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                                     invalid = new ArrayList<>();
                                 }
                                 invalid.add(s);
-                            } else if (!passtrough && size == 80) {
-                                sendPacket(addPlayer(80, s));
                             }
                         }
                     }
@@ -652,7 +567,7 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                     if (-1 != (slot = nameToSlotMap.getInt(player))) {
                         Team team = new Team();
                         team.setMode((byte) 2);
-                        team.setName(teamNames[slot]);
+                        team.setName(fakePlayerUsernames[slot]);
                         team.setDisplayName(packet.getDisplayName());
                         team.setPrefix(packet.getPrefix());
                         team.setSuffix(packet.getSuffix());
@@ -661,11 +576,7 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                         if (teamCollisionRuleSupported) {
                             team.setCollisionRule(packet.getCollisionRule());
                         }
-                        if (teamColorIsByte) {
-                            PacketUtil.setTeamColorByte(team, PacketUtil.getTeamColorByte(packet));
-                        } else {
-                            team.setColor(packet.getColor());
-                        }
+                        team.setColor(packet.getColor());
                         sendPacket(team);
                     }
                 }
@@ -685,26 +596,16 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                         if (invalid == null || !invalid.contains(player)) {
                             Team team = new Team();
                             team.setMode((byte) 2);
-                            team.setName(teamNames[slot]);
-                            if (is113OrLater()) {
-                                team.setDisplayName(teamNamesChat[slot]);
-                                team.setPrefix(EMPTY_CHAT);
-                                team.setSuffix(EMPTY_CHAT);
-                            } else {
-                                team.setDisplayName(team.getName());
-                                team.setPrefix("");
-                                team.setSuffix("");
-                            }
+                            team.setName(fakePlayerUsernames[slot]);
+                            team.setDisplayName(team.getName());
+                            team.setPrefix("");
+                            team.setSuffix("");
                             team.setFriendlyFire((byte) 1);
                             team.setNameTagVisibility("always");
                             if (teamCollisionRuleSupported) {
                                 team.setCollisionRule("always");
                             }
-                            if (teamColorIsByte) {
-                                PacketUtil.setTeamColorByte(team, (byte) 0);
-                            } else {
-                                team.setColor(is113OrLater() ? 21 : 0); // Reset
-                            }
+                            team.setColor((byte) 0);
                             sendPacket(team);
                         }
                     } else {
@@ -712,7 +613,7 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                         if (serverTeam != null) {
                             Team team = new Team();
                             team.setMode((byte) 2);
-                            team.setName(teamNames[slot]);
+                            team.setName(fakePlayerUsernames[slot]);
                             team.setDisplayName(serverTeam.getDisplayName());
                             team.setPrefix(serverTeam.getPrefix());
                             team.setSuffix(serverTeam.getSuffix());
@@ -721,11 +622,7 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                             if (teamCollisionRuleSupported) {
                                 team.setCollisionRule(serverTeam.getCollisionRule());
                             }
-                            if (teamColorIsByte) {
-                                PacketUtil.setTeamColorByte(team, serverTeam.getColor());
-                            } else {
-                                team.setColor(serverTeam.getColor());
-                            }
+                            team.setColor(serverTeam.getColor());
                             sendPacket(team);
                         }
                     }
@@ -776,7 +673,6 @@ public abstract class AbstractTabListLogic extends TabListHandler {
         playerToTeamMap.clear();
 
         serverTabList.clear();
-        serverTabListPlayers.clear();
         serverHeader = null;
         serverFooter = null;
     }
@@ -802,12 +698,6 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                     // remove players from teams
                     for (int i = 0; i < size; i++) {
                         removePlayerFromTeam(i, clientUuid[i], clientUsername[i]);
-                    }
-                } else {
-                    for (String player : serverTabListPlayers) {
-                        if (!playerToTeamMap.containsKey(player)) {
-                            sendPacket(removePlayer(80, player));
-                        }
                     }
                 }
 
@@ -921,12 +811,6 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                     packet.setAction(UPDATE_DISPLAY_NAME);
                     packet.setItems(items);
                     sendPacket(packet);
-                    for (String player : serverTabListPlayers) {
-                        if (!playerToTeamMap.containsKey(player)) {
-                            sendPacket(addPlayer(80, player));
-                        }
-                    }
-
                 } else {
                     uuidToSlotMap.clear();
                     rebuildTabList();
@@ -976,7 +860,7 @@ public abstract class AbstractTabListLogic extends TabListHandler {
             if (size > this.size) {
                 for (int slot = this.size; slot < size; slot++) {
                     clientSkin[slot] = Icon.DEFAULT;
-                    clientText[slot] = EMPTY_CHAT;
+                    clientText[slot] = "{\"text\": \"\"}";
                     clientPing[slot] = 0;
                 }
             }
@@ -987,14 +871,14 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                     clientUuid[slot] = fakePlayerUUIDs[slot];
                     clientUsername[slot] = fakePlayerUsernames[slot];
                     clientSkin[slot] = Icon.DEFAULT;
-                    clientText[slot] = EMPTY_CHAT;
+                    clientText[slot] = "{\"text\": \"\"}";
                     clientPing[slot] = 0;
                     uuidToSlotMap.put(clientUuid[slot], slot);
                     PlayerListItem.Item item = new PlayerListItem.Item();
                     item.setUuid(clientUuid[slot]);
                     item.setUsername(clientUsername[slot]);
                     item.setPing(0);
-                    item.setDisplayName(EMPTY_CHAT);
+                    item.setDisplayName("{\"text\": \"\"}");
                     item.setProperties(EMPTY_PROPRTIES);
                     items[slot - this.size] = item;
                 }
@@ -1036,13 +920,6 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                         packet.setItems(items);
                         sendPacket(packet);
                     }
-
-                    for (String player : serverTabListPlayers) {
-                        if(!playerToTeamMap.containsKey(player)) {
-                            sendPacket(addPlayer(80, player));
-                        }
-                    }
-
                 } else {
                     for (int slot = this.size; slot < size; slot++) {
                         addPlayerToTeam(slot, clientUuid[slot], clientUsername[slot]);
@@ -1067,12 +944,6 @@ public abstract class AbstractTabListLogic extends TabListHandler {
                 if (this.size != 80) {
                     for (int slot = 0; slot < this.size; slot++) {
                         removePlayerFromTeam(slot, clientUuid[slot], clientUsername[slot]);
-                    }
-                } else {
-                    for (String player : serverTabListPlayers) {
-                        if (!playerToTeamMap.containsKey(player)) {
-                            sendPacket(removePlayer(80, player));
-                        }
                     }
                 }
                 this.size = size;
@@ -1309,14 +1180,14 @@ public abstract class AbstractTabListLogic extends TabListHandler {
     }
 
     private static Team removePlayer(int slot, String player) {
-        Team packet = new Team(teamNames[slot]);
+        Team packet = new Team(fakePlayerUsernames[slot]);
         packet.setMode((byte) 4);
         packet.setPlayers(new String[]{player});
         return packet;
     }
 
     private static Team addPlayer(int slot, String player) {
-        Team packet = new Team(teamNames[slot]);
+        Team packet = new Team(fakePlayerUsernames[slot]);
         packet.setMode((byte) 3);
         packet.setPlayers(new String[]{player});
         return packet;

@@ -32,10 +32,13 @@ import de.codecrafter47.data.bungee.api.BungeeData;
 import de.codecrafter47.data.minecraft.api.MinecraftData;
 import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
-import net.md_5.bungee.api.ProxyServer;
 
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -44,8 +47,6 @@ public abstract class Placeholder {
     private static final Placeholder NULL_PLACEHOLDER = new NullPlaceholder();
     private static final Placeholder OTHER_COUNT_PLACEHOLDER = new OtherCountPlaceholder();
     private static final Placeholder SERVER_PLAYER_COUNT_PLACEHOLDER = new ServerPlayerCountPlaceholder();
-    private static final Placeholder TOTAL_SERVER_COUNT_PLACEHOLDER = new ServerCountPlaceholder(true);
-    private static final Placeholder ONLINE_SERVER_COUNT_PLACEHOLDER = new ServerCountPlaceholder(false);
     private static final Map<String, BiFunction<String[], Function<Context, Player>, Placeholder>> playerPlaceholders = new HashMap<>();
     private static final Map<String, BiFunction<String[], Function<Context, String>, Placeholder>> serverPlaceholders = new HashMap<>();
 
@@ -126,8 +127,6 @@ public abstract class Placeholder {
         playerPlaceholders.put("bungeeonlinetime_seconds", ofIntFunction(player -> player.getOpt(BungeeData.BungeeOnlineTime_OnlineTime).map(duration -> (int) (duration.getSeconds() % 60)).orElse(0)));
         playerPlaceholders.put("bungeeonlinetime_minutes", ofIntFunction(player -> player.getOpt(BungeeData.BungeeOnlineTime_OnlineTime).map(duration -> (int) ((duration.getSeconds() % 3600) / 60)).orElse(0)));
         playerPlaceholders.put("bungeeonlinetime_hours", ofIntFunction(player -> player.getOpt(BungeeData.BungeeOnlineTime_OnlineTime).map(duration -> (int) (duration.getSeconds() / 3600)).orElse(0)));
-        playerPlaceholders.put("bungeeonlinetime_hours_of_24", ofIntFunction(player -> player.getOpt(BungeeData.BungeeOnlineTime_OnlineTime).map(duration -> (int) ((duration.getSeconds() / 3600) % 24)).orElse(0)));
-        playerPlaceholders.put("bungeeonlinetime_days", ofIntFunction(player -> player.getOpt(BungeeData.BungeeOnlineTime_OnlineTime).map(duration -> (int) (duration.getSeconds() / 86400)).orElse(0)));
         playerPlaceholders.put("redisbungee_server_id", ofStringData(BTLPBungeeDataKeys.DATA_KEY_RedisBungee_ServerId));
         playerPlaceholders.put("askyblock_island_level", ofIntData(BukkitData.ASkyBlock_IslandLevel));
         playerPlaceholders.put("askyblock_island_name", ofStringData(BukkitData.ASkyBlock_IslandName));
@@ -219,13 +218,6 @@ public abstract class Placeholder {
             return SERVER_PLAYER_COUNT_PLACEHOLDER;
         } else if ("other_count".equals(tokens[0])) {
             return OTHER_COUNT_PLACEHOLDER;
-        } else if ("server_count".equals(tokens[0])) {
-            if (tokens.length == 2 && "total".equals(tokens[1])) {
-                return TOTAL_SERVER_COUNT_PLACEHOLDER;
-            } else if (tokens.length == 2 && "online".equals(tokens[1])) {
-                return ONLINE_SERVER_COUNT_PLACEHOLDER;
-            }
-            return NULL_PLACEHOLDER;
         } else {
             return new CustomPlaceholder(tokens[0], Arrays.copyOfRange(tokens, 1, tokens.length));
         }
@@ -337,30 +329,6 @@ public abstract class Placeholder {
         public String evaluate(Context context) {
             Integer n;
             return null != (n = context.get(Context.KEY_SERVER_PLAYER_COUNT)) ? n.toString() : "";
-        }
-    }
-
-    private static class ServerCountPlaceholder extends Placeholder {
-
-        private final boolean includeOffline;
-
-        private ServerCountPlaceholder(boolean includeOffline) {
-            this.includeOffline = includeOffline;
-        }
-
-        @Override
-        public String evaluate(Context context) {
-            int n = 0;
-            try {
-                for (String server : ProxyServer.getInstance().getServers().keySet()) {
-                    if (includeOffline || BungeeTabListPlus.getInstance().getServerState(server).isOnline()) {
-                        n++;
-                    }
-                }
-            } catch (Exception ignored) {
-
-            }
-            return Integer.toString(n);
         }
     }
 

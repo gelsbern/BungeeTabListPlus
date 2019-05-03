@@ -23,7 +23,6 @@ import codecrafter47.bungeetablistplus.BungeeTabListPlus;
 import codecrafter47.bungeetablistplus.player.ConnectedPlayer;
 import codecrafter47.bungeetablistplus.player.IPlayerProvider;
 import codecrafter47.bungeetablistplus.protocol.PacketHandler;
-import codecrafter47.bungeetablistplus.tablisthandler.PlayerTablistHandler;
 import codecrafter47.bungeetablistplus.tablisthandler.logic.TabListHandler;
 import com.google.common.collect.ImmutableList;
 import lombok.Synchronized;
@@ -93,10 +92,7 @@ public class ConnectedPlayerManager implements IPlayerProvider {
         byUUID.remove(player.getUniqueID(), player);
         playerList = ImmutableList.copyOf((Iterable<? extends ConnectedPlayer>) players);
         BungeeTabListPlus.getInstance().runInMainThread(() -> {
-            PlayerTablistHandler tablistHandler = player.getPlayerTablistHandler();
-            if (tablistHandler != null) {
-                tablistHandler.onDisconnect();
-            }
+            player.getPlayerTablistHandler().onDisconnect();
         });
         PacketHandler packetHandler = player.getPacketHandler();
         if (packetHandler instanceof TabListHandler) {

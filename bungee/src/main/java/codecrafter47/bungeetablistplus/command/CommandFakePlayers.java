@@ -19,13 +19,11 @@
 
 package codecrafter47.bungeetablistplus.command;
 
-import codecrafter47.bungeetablistplus.BungeeTabListPlus;
 import codecrafter47.bungeetablistplus.api.bungee.BungeeTabListPlusAPI;
 import codecrafter47.bungeetablistplus.api.bungee.FakePlayerManager;
 import codecrafter47.bungeetablistplus.api.bungee.tablist.FakePlayer;
 import codecrafter47.bungeetablistplus.command.util.CommandBase;
 import codecrafter47.bungeetablistplus.command.util.CommandExecutor;
-import codecrafter47.bungeetablistplus.player.FakePlayerManagerImpl;
 import codecrafter47.util.chat.ChatUtil;
 import com.google.common.base.Joiner;
 import net.md_5.bungee.api.CommandSender;
@@ -59,7 +57,7 @@ public class CommandFakePlayers extends CommandExecutor {
             sender.sendMessage(ChatUtil.parseBBCode("&cUsage: [suggest=/btlp fake add ]/btlp fake add <name>[/suggest]"));
         } else {
             for (String name : args) {
-                FakePlayer fakePlayer = manager().createFakePlayer(name, randomServer(), true);
+                FakePlayer fakePlayer = manager().createFakePlayer(name, randomServer());
                 fakePlayer.setRandomServerSwitchEnabled(true);
                 sender.sendMessage(ChatUtil.parseBBCode("&aAdded fake player " + name + "."));
             }
@@ -115,8 +113,8 @@ public class CommandFakePlayers extends CommandExecutor {
         sender.sendMessage(ChatUtil.parseBBCode("&e[suggest]/btlp fake help[/suggest] &f&oYou already found this one :P"));
     }
 
-    private static FakePlayerManagerImpl manager() {
-        return BungeeTabListPlus.getInstance().getFakePlayerManagerImpl();
+    private static FakePlayerManager manager() {
+        return BungeeTabListPlusAPI.getFakePlayerManager();
     }
 
     private static ServerInfo randomServer() {

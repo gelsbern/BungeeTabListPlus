@@ -22,6 +22,7 @@ import codecrafter47.bungeetablistplus.api.bungee.*;
 import codecrafter47.bungeetablistplus.bridge.BukkitBridge;
 import codecrafter47.bungeetablistplus.bridge.PlaceholderAPIHook;
 import codecrafter47.bungeetablistplus.command.CommandBungeeTabListPlus;
+import codecrafter47.bungeetablistplus.common.BugReportingService;
 import codecrafter47.bungeetablistplus.common.network.BridgeProtocolConstants;
 import codecrafter47.bungeetablistplus.config.CustomPlaceholder;
 import codecrafter47.bungeetablistplus.config.MainConfig;
@@ -59,7 +60,6 @@ import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.plugin.Plugin;
 import net.md_5.bungee.api.scheduler.ScheduledTask;
 import net.md_5.bungee.connection.LoginResult;
-import org.bstats.bungeecord.Metrics;
 import org.yaml.snakeyaml.error.YAMLException;
 
 import javax.annotation.Nonnull;
@@ -101,6 +101,7 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
     private RedisPlayerManager redisPlayerManager;
     @Getter
     private DataManager dataManager;
+    private BugReportingService bugReportingService;
 
     public BungeeTabListPlus(Plugin plugin) {
         this.plugin = plugin;
@@ -128,8 +129,7 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
     MatchingStringsCollection excludedServers;
     MatchingStringsCollection hiddenServers;
 
-    @Getter
-    private FakePlayerManagerImpl fakePlayerManagerImpl;
+    private FakePlayerManagerImpl fakePlayerManager;
 
     private PermissionManager pm;
 
@@ -243,6 +243,32 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
                         : Collections.emptyList()
         );
 
+        if (config.automaticallySendBugReports) {
+            String revision = "unknown";
+            try {
+                Properties current = new Properties();
+                current.load(getClass().getClassLoader().getResourceAsStream("version.properties"));
+                revision = current.getProperty("revision", revision);
+            } catch (IOException ex) {
+                getLogger().log(Level.SEVERE, "Unexpected exception", ex);
+            }
+
+            String version = getPlugin().getDescription().getVersion();
+
+            if (!"unknown".equals(revision)) {
+                version += "-git-" + revision;
+            }
+
+            String systemInfo = "" +
+                    "System Info\n" +
+                    "===========\n" +
+                    "Bungee: " + getProxy().getVersion() + "\n" +
+                    "Java: " + System.getProperty("java.version") + "\n";
+
+            bugReportingService = new BugReportingService(Level.SEVERE, getPlugin().getDescription().getName(), version, command -> plugin.getProxy().getScheduler().runAsync(plugin, command), systemInfo);
+            bugReportingService.registerLogger(getLogger());
+        }
+
         resendThread = new ResendThread();
 
         File headsFolder = new File(plugin.getDataFolder(), "heads");
@@ -278,7 +304,7 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
 
         skins = new SkinManagerImpl(plugin, headsFolder);
 
-        fakePlayerManagerImpl = new FakePlayerManagerImpl(plugin);
+        fakePlayerManager = new FakePlayerManagerImpl(plugin);
 
         playerProviders = new ArrayList<>();
 
@@ -290,7 +316,7 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
 
         playerProviders.add(connectedPlayerManager);
 
-        playerProviders.add(fakePlayerManagerImpl);
+        playerProviders.add(fakePlayerManager);
 
         plugin.getProxy().registerChannel(BridgeProtocolConstants.CHANNEL);
         bukkitBridge = new BukkitBridge(this);
@@ -313,7 +339,12 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
                 new UpdateNotifier(this), 15, 15, TimeUnit.MINUTES);
 
         // Start metrics
-        Metrics metrics = new Metrics(plugin);
+        try {
+            Metrics metrics = new Metrics(plugin);
+            metrics.start();
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.SEVERE, "Failed to initialize Metrics", e);
+        }
 
         // Load updateCheck thread
         if (config.checkForUpdates) {
@@ -350,7 +381,9 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
     }
 
     public void onDisable() {
-        // nothing to do
+        if (bugReportingService != null) {
+            bugReportingService.unregisterLogger(getLogger());
+        }
     }
 
     private Double requestedUpdateInterval = null;
@@ -387,7 +420,7 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
         failIfNotMainThread();
         try {
             // todo requestedUpdateInterval = null;
-            fakePlayerManagerImpl.removeConfigFakePlayers();
+            fakePlayerManager.removeConfigFakePlayers();
             File file = new File(plugin.getDataFolder(), "config.yml");
             config = YamlConfig.read(new FileInputStream(file), MainConfig.class);
             if (config.needWrite) {
@@ -409,12 +442,12 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
                             : Collections.emptyList()
             );
             if (reloadTablists()) return false;
-            fakePlayerManagerImpl.reload();
+            fakePlayerManager.reload();
             resendTabLists();
             restartRefreshThread();
             skins.onReload();
-        } catch (Throwable th) {
-            plugin.getLogger().log(Level.WARNING, "Unable to reload Config", th);
+        } catch (IOException | YAMLException ex) {
+            plugin.getLogger().log(Level.WARNING, "Unable to reload Config", ex);
             return false;
         }
         return true;
@@ -528,7 +561,7 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
 
     @Override
     protected FakePlayerManager getFakePlayerManager0() {
-        return fakePlayerManagerImpl;
+        return fakePlayerManager;
     }
 
     /**
@@ -566,7 +599,6 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
         }
         player.getOpt(BukkitData.VanishNoPacket_IsVanished).ifPresent(b -> hidden[0] |= b);
         player.getOpt(BukkitData.SuperVanish_IsVanished).ifPresent(b -> hidden[0] |= b);
-        player.getOpt(BukkitData.CMI_IsVanished).ifPresent(b -> hidden[0] |= b);
         player.getOpt(BukkitData.Essentials_IsVanished).ifPresent(b -> hidden[0] |= b);
 
         // check ProxyCore
@@ -584,11 +616,6 @@ public class BungeeTabListPlus extends BungeeTabListPlusAPI {
         }
 
         return hidden[0];
-    }
-
-    @Override
-    protected boolean isHidden0(ProxiedPlayer player) {
-        return isHidden(getConnectedPlayerManager().getPlayer(player));
     }
 
     /**

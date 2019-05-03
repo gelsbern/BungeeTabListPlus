@@ -23,9 +23,20 @@ import codecrafter47.bungeetablistplus.yamlconfig.Path;
 import codecrafter47.bungeetablistplus.yamlconfig.UpdatableConfig;
 import codecrafter47.bungeetablistplus.yamlconfig.YamlNode;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TimeZone;
 
 public class MainConfig implements UpdatableConfig {
+
+    @Comment({
+            "You can limit the number of characters per slot here",
+            "Color codes do not count as a character; -1 means unlimited",
+            "This option will be removed soon. Don't use it anymore."
+    })
+    public int charLimit = -1;
 
     @Comment({
             "if enabled the plugin checks for new versions automatically.",
@@ -41,6 +52,13 @@ public class MainConfig implements UpdatableConfig {
     public boolean notifyAdminsIfUpdateAvailable = true;
 
     @Comment({
+            "If this is set to true and the plugin encounters an issue a bug report is sent automatically",
+            "Bug reports do not contain any sensitive or identifying information",
+            "Bug reports contain the plugin name, plugin version and the error message that also appears in the server log"
+    })
+    public boolean automaticallySendBugReports = true;
+
+    @Comment({
             "Interval (in seconds) at which all servers of your network get pinged to check whether they are online",
             "If you intend to use the {onlineState:SERVER} variable set this to 2 or any value you like",
             "setting this to -1 disables this feature"
@@ -53,14 +71,15 @@ public class MainConfig implements UpdatableConfig {
     public List<String> fakePlayers = new ArrayList<>();
 
     @Comment({
-            "Servers which you wish to show their own tabList (The one provided by bukkit)",
-            "Players on these servers don't see the custom tab list provided by BungeeTabListPlus"
+            "servers which you wish to show their own tabList (The one provided by bukkit)"
     })
     public List<String> excludeServers = new ArrayList<>();
 
     @Comment({
-            "Players on these servers are hidden from the tab list.",
-            "Doesn't necessarily hide the server from the tab list."
+            "servers which you wish to hide from the global tabList",
+            "Note that this is different from excludeServers above: this hides all players on the hidden servers from appearing",
+            "on the tablist, whereas excluded servers' players are still on the BungeeTabListPlus tablist, but they do not see",
+            "the global tab list"
     })
     public List<String> hiddenServers = new ArrayList<>();
 
@@ -114,10 +133,6 @@ public class MainConfig implements UpdatableConfig {
         remove(section, "worldAlias");
         remove(section, "serverPrefixes");
         remove(section, "prefixes");
-
-        remove(section, "charLimit");
-
-        remove(section, "automaticallySendBugReports");
     }
 
     private void remove(YamlNode section, String id) {

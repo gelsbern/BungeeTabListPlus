@@ -506,10 +506,9 @@ public class AbstractTabListLogicTest extends AbstractTabListLogicTestBase {
         for (int i = 0; i < 25; i++) {
             assertEquals("Team " + i, clientTabList.playerToTeamMap.get(usernames[i]));
         }
-        // This no longer holds as BungeeTabListPlus now assigns players to a team if they don't already have one
-        //for (int i = 25; i < 50; i++) {
-        //    assertFalse(clientTabList.playerToTeamMap.containsKey(usernames[i]));
-        //}
+        for (int i = 25; i < 50; i++) {
+            assertFalse(clientTabList.playerToTeamMap.containsKey(usernames[i]));
+        }
 
         tabListHandler.setSize(60);
 
@@ -537,10 +536,9 @@ public class AbstractTabListLogicTest extends AbstractTabListLogicTestBase {
         for (int i = 0; i < 25; i++) {
             assertEquals("Team " + i, clientTabList.playerToTeamMap.get(usernames[i]));
         }
-        // see above
-        //for (int i = 25; i < 50; i++) {
-        //    assertFalse(clientTabList.playerToTeamMap.containsKey(usernames[i]));
-        //}
+        for (int i = 25; i < 50; i++) {
+            assertFalse(clientTabList.playerToTeamMap.containsKey(usernames[i]));
+        }
 
         tabListHandler.setPassThrough(true);
 
@@ -556,10 +554,9 @@ public class AbstractTabListLogicTest extends AbstractTabListLogicTestBase {
         for (int i = 0; i < 25; i++) {
             assertEquals("Team " + i, clientTabList.playerToTeamMap.get(usernames[i]));
         }
-        // see above
-        //for (int i = 25; i < 50; i++) {
-        //    assertFalse(clientTabList.playerToTeamMap.containsKey(usernames[i]));
-        //}
+        for (int i = 25; i < 50; i++) {
+            assertFalse(clientTabList.playerToTeamMap.containsKey(usernames[i]));
+        }
 
         tabListHandler.setSize(60);
 

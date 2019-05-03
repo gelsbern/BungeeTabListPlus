@@ -40,7 +40,6 @@ public class TabListLogic extends AbstractTabListLogic {
     private final ProxiedPlayer player;
     private final Channel channel;
     private final boolean onlineMode;
-    private final boolean is113OrLater;
 
     public TabListLogic(TabListHandler parent, ProxiedPlayer player) {
         super(parent);
@@ -51,7 +50,6 @@ public class TabListLogic extends AbstractTabListLogic {
         } catch (NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
-        is113OrLater = BungeeTabListPlus.getInstance().getProtocolVersionProvider().has113OrLater(player);
     }
 
     @Override
@@ -72,11 +70,6 @@ public class TabListLogic extends AbstractTabListLogic {
             }
         }
         player.unsafe().sendPacket(packet);
-    }
-
-    @Override
-    protected boolean is113OrLater() {
-        return is113OrLater;
     }
 
     private void failIfNotInEventLoop() {
